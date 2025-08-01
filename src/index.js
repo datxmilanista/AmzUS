@@ -9,6 +9,12 @@ const dirSave = path.join(__dirname, "..", "output", formattedDate);
 global.data.dirSave = dirSave;
 
 const { QWidget, QLabel, QLineEdit, QPushButton, QTextEdit, QCheckBox, QBoxLayout } = require("@nodegui/nodegui");
+const { 
+    checkCard, 
+    syncBusinessAccounts, 
+    getBusinessAccounts 
+} = require('./util/checkCard.js');
+const updateBusiness = require('./util/updateBusiness.js');
 
 function createMainWindow(centralWidget) {
     ensureExists(path.join(__dirname, "..", "output"));
@@ -529,26 +535,41 @@ function createMainWindow(centralWidget) {
     scanButton.addEventListener('clicked', async () => {
         const value = parseInt(checkAfterInput.text());
         if (isNaN(value) || value < 1) {
-            checkAfterInput.setText("60"); // Reset to 60 seconds if invalid
+            checkAfterInput.setText("60");
         }
-        global.data.settings.checkAfter = Math.max(value, 1) * 1000; // Convert seconds to milliseconds
+        global.data.settings.checkAfter = Math.max(value, 1) * 1000;
         appendToTerminal(terminal.toPlainText() + "\n" + `Scanning card with ${Math.max(value, 1)}s delay...`);
+        
         try {
-            await require(path.join(__dirname, "util", "checkCard.js"))();
+            scanButton.setEnabled(false);
+            scanButton.setText("Scanning...");
+            
+            const businessAccounts = getBusinessAccounts();
+            if (businessAccounts.length === 0) {
+                appendToTerminal(terminal.toPlainText() + "\n" + "❌ No business accounts available");
+                return;
+            }
+            
+            syncBusinessAccounts();
+            await checkCard();
+            
         } catch (error) {
             console.error("Error during card scan:", error);
-            appendToTerminal(terminal.toPlainText() + "\n" + "Error during card scan: " + error.message);
+            appendToTerminal(terminal.toPlainText() + "\n" + "❌ Error: " + error.message);
+        } finally {
+            scanButton.setEnabled(true);
+            scanButton.setText("Scan Card");
         }
     });
 
     businessLoginButton.addEventListener('clicked', async () => {
         appendToTerminal(terminal.toPlainText() + "\n" + "🚀 Starting Business Login Process...");
         try {
-            await require(path.join(__dirname, "util", "updateBusiness.js"))();
-            appendToTerminal(terminal.toPlainText() + "\n" + "✅ Business login process completed!");
+            await updateBusiness();
+            appendToTerminal(terminal.toPlainText() + "\n" + "✅ Business login completed!");
         } catch (error) {
             console.error("Error during business login:", error);
-            appendToTerminal(terminal.toPlainText() + "\n" + "❌ Error during business login: " + error.message);
+            appendToTerminal(terminal.toPlainText() + "\n" + "❌ Error: " + error.message);
         }
     });
 
