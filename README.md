@@ -1,6 +1,6 @@
 # AmzUS - CHK Card
 
-A desktop application for managing Amazon US accounts with automated login and business account setup capabilities.
+**A desktop application for managing Amazon US accounts with automated login and business account setup capabilities.**
 
 ## Features
 
@@ -81,6 +81,7 @@ Results are automatically saved in the `output/` directory organized by date:
 ## License
 
 This project is for educational purposes only.
+
 
 
 
