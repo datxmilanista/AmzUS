@@ -20,7 +20,7 @@ A desktop application for managing Amazon US accounts with automated login and b
 
 1. Clone the repository:
 ```bash
-git clone [<repository-url>](https://github.com/datxmilanista/AmzUS)
+git clone https://github.com/datxmilanista/AmzUS
 cd AmzUS
 ```
 
@@ -81,4 +81,5 @@ Results are automatically saved in the `output/` directory organized by date:
 ## License
 
 This project is for educational purposes only.
+
 
