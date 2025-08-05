@@ -106,7 +106,7 @@ async function login(page, { email, pass, code, proxy }) {
             .setTimeout(timeout)
             .fill(pass);
     }
-    {
+    try {
         const targetPage = page;
         const promises = [];
         const startWaitingForEvents = () => {
@@ -118,7 +118,7 @@ async function login(page, { email, pass, code, proxy }) {
             targetPage.locator('::-p-xpath(//*[@id=\\"signInSubmit\\"])'),
             targetPage.locator(':scope >>> #signInSubmit')
         ])
-            .setTimeout(timeout)
+            .setTimeout(2000)
             .on('action', () => startWaitingForEvents())
             .click({
               offset: {
@@ -127,6 +127,8 @@ async function login(page, { email, pass, code, proxy }) {
               },
             });
         await Promise.all(promises);
+    } catch (_) {
+        throw new Error("ACCOUNT_NOT_FOUND");
     }
     {
         const targetPage = page;

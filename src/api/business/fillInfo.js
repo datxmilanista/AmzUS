@@ -364,23 +364,23 @@ async function finalSetup(page) {
             });
         await Promise.all(promises);
     }
-    {
-        const targetPage = page;
-        let frame = targetPage.mainFrame();
-        frame = frame.childFrames()[0];
-        await puppeteer.Locator.race([
-            frame.locator('#double-consent-checkbox-box'),
-            frame.locator('::-p-xpath(//*[@id=\\"double-consent-checkbox-box\\"])'),
-            frame.locator(':scope >>> #double-consent-checkbox-box')
-        ])
-            .setTimeout(timeout)
-            .click({
-              offset: {
-                x: 14.799995422363281,
-                y: 9.625,
-              },
-            });
-    }
+    // {
+    //     const targetPage = page;
+    //     let frame = targetPage.mainFrame();
+    //     frame = frame.childFrames()[0];
+    //     await puppeteer.Locator.race([
+    //         frame.locator('#double-consent-checkbox-box'),
+    //         frame.locator('::-p-xpath(//*[@id=\\"double-consent-checkbox-box\\"])'),
+    //         frame.locator(':scope >>> #double-consent-checkbox-box')
+    //     ])
+    //         .setTimeout(timeout)
+    //         .click({
+    //           offset: {
+    //             x: 14.799995422363281,
+    //             y: 9.625,
+    //           },
+    //         });
+    // }
     {
         const targetPage = page;
         let frame = targetPage.mainFrame();

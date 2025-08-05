@@ -51,11 +51,35 @@ async function login(page, { email, pass, code, proxy }) {
     // Handle CAPTCHA if present
     if (global.data.parentAcc.geminiKey && global.data.parentAcc.geminiKey != "")
         await handleCapcha(page, timeout);
+    try {
+        const targetPage = page;
+        const promises = [];
+        const startWaitingForEvents = () => {
+            promises.push(targetPage.waitForNavigation());
+        }
+        await puppeteer.Locator.race([
+            targetPage.locator('::-p-aria(Continue shopping)'),
+            targetPage.locator('button'),
+            targetPage.locator('::-p-xpath(/html/body/div/div[1]/div[3]/div/div/form/div/div/span/span/button)'),
+            targetPage.locator(':scope >>> button'),
+            targetPage.locator('::-p-text(Continue shopping)')
+        ])
+            .setTimeout(1000)
+            .on('action', () => startWaitingForEvents())
+            .click({
+              offset: {
+                x: 237.39999389648438,
+                y: 15.149993896484375,
+              },
+            });
+        await Promise.all(promises);
+    } catch (_) {}
 
     {
         const targetPage = page;
         try {
-            await targetPage.locator('#ap_email').fill(email);        } catch (error) {
+            await targetPage.locator('#ap_email').fill(email);        
+        } catch (error) {
             console.log("Error filling email:", error.message);
             console.app("Error filling email:" + error.message);
             throw new Error("FAILED_FILL_EMAIL");
@@ -156,6 +180,7 @@ async function login(page, { email, pass, code, proxy }) {
     }
 
     {
+        await new Promise(resolve => setTimeout(resolve, 1000));
         const targetPage = page;
         // Wait the page to load done
         await targetPage.evaluate(() => {
@@ -167,6 +192,30 @@ async function login(page, { email, pass, code, proxy }) {
                 }
             });
         });
+    }
+
+    if (page.url().includes('/ap/accountfixup?clientContext=')) {
+        const targetPage = page;
+        const promises = [];
+        const startWaitingForEvents = () => {
+            promises.push(targetPage.waitForNavigation());
+        }
+        await puppeteer.Locator.race([
+            targetPage.locator('::-p-aria(Not now)'),
+            targetPage.locator('#ap-account-fixup-phone-skip-link'),
+            targetPage.locator('::-p-xpath(//*[@id=\\"ap-account-fixup-phone-skip-link\\"])'),
+            targetPage.locator(':scope >>> #ap-account-fixup-phone-skip-link'),
+            targetPage.locator('::-p-text(Not now)')
+        ])
+            .setTimeout(timeout)
+            .on('action', () => startWaitingForEvents())
+            .click({
+              offset: {
+                x: 23.662506103515625,
+                y: 9.20001220703125,
+              },
+            });
+        await Promise.all(promises);
     }
 
     try {
@@ -196,7 +245,7 @@ async function login(page, { email, pass, code, proxy }) {
     }
     {
         const targetPage = page;
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 1000));
         // Wait the page to load done
         await targetPage.evaluate(() => {
             return new Promise((resolve) => {
@@ -209,7 +258,17 @@ async function login(page, { email, pass, code, proxy }) {
         });
 
         if( page.url().includes('/ap/signin')) {
-            throw new Error("ACCOUNT_LOCKED");
+            try {
+                await puppeteer.Locator.race([
+                    targetPage.locator('button[type="submit"].a-button-text[alt="Continue shopping"]'),
+                    targetPage.locator('::-p-xpath(//button[@type="submit" and @class="a-button-text" and @alt="Continue shopping"])'),
+                    targetPage.locator(':scope >>> button[type="submit"].a-button-text[alt="Continue shopping"]')
+                ])
+                    .setTimeout(1000)
+                    .click();
+            } catch (error) {
+                throw new Error("ACCOUNT_LOCKED");
+            }
         }
     }
 

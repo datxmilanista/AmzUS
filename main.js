@@ -7,20 +7,12 @@ const { QMainWindow, QWidget, QLabel, QLineEdit, QPushButton, QTextEdit,
 
 // Global values
 global.data = {};
-
-// Load parent account config with error handling
-try {
-    const dataFile = JSON.parse(fs.readFileSync(path.join(__dirname, "src", "data", 'data.json'), 'utf8'));
-    global.data.parentAcc = dataFile.settings || { geminiKey: "" };
-} catch (error) {
-    console.log("Warning: data.json not found, using default settings");
-    global.data.parentAcc = { geminiKey: "" };
-}
-
+global.data.parentAcc = {
+    geminiKey: ""
+};
 global.data.settings = {
   debug: false,
-  showBrowser: true,
-  checkAfter: 60000 // Default 60 seconds in milliseconds
+  showBrowser: true
 };
 global.data.browser = {};
 

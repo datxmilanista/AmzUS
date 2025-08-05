@@ -27,45 +27,6 @@ const maxConcurrentWindows = Math.max(proxies.length, 1); // Tối thiểu 1 thr
 let activeBrowsers = [];
 
 /**
- * Function to check if current page is "Page Not Found"
- */
-async function isPageNotFound(page) {
-    try {
-        const result = await page.evaluate(() => {
-            const bodyText = document.body ? document.body.innerText : '';
-            const title = document.title;
-            
-            // Check for various "Page Not Found" indicators
-            return bodyText.includes('SORRY') && 
-                   bodyText.includes("we couldn't find that page") ||
-                   title.includes('Page Not Found') ||
-                   bodyText.includes('Try searching or go to Amazon') ||
-                   bodyText.includes('we could not find that page');
-        });
-        
-        return result;
-    } catch (error) {
-        console.error('Error checking page not found:', error.message);
-        return false;
-    }
-}
-
-/**
- * Function to check if account is already a business account
- */
-function isBusinessAccount(email) {
-    try {
-        const dataPath = path.join(__dirname, "..", "data", "data.json");
-        const data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
-        
-        return data.businessAccounts && data.businessAccounts.includes(email);
-    } catch (error) {
-        console.error(`❌ Error checking business account status for ${email}:`, error.message);
-        return false; // If error, assume not business account to be safe
-    }
-}
-
-/**
  * Function to add successful business account to data.json
  */
 function addBusinessAccount(email) {
@@ -95,48 +56,21 @@ function addBusinessAccount(email) {
 async function updateBusiness() {
     console.log("🚀 Starting Business Login Process...");
     console.app("🚀 Starting Business Login Process...");
-    
-    // Filter out accounts that are already business accounts
-    const accountsToProcess = childAccounts.filter(accountLine => {
-        const email = accountLine.split('|')[0]; // Get email from account line
-        const isAlreadyBusiness = isBusinessAccount(email);
-        
-        if (isAlreadyBusiness) {
-            console.log(`⏭️ Skipping ${email} - already a business account`);
-            console.app(`⏭️ Skipping ${email} - already a business account`);
-            return false;
-        }
-        
-        return true;
-    });
-    
-    console.log(`📊 Total accounts in file: ${childAccounts.length}`);
-    console.app(`📊 Total accounts in file: ${childAccounts.length}`);
-    console.log(`✅ Business accounts to skip: ${childAccounts.length - accountsToProcess.length}`);
-    console.app(`✅ Business accounts to skip: ${childAccounts.length - accountsToProcess.length}`);
-    console.log(`🎯 Accounts to process: ${accountsToProcess.length}`);
-    console.app(`🎯 Accounts to process: ${accountsToProcess.length}`);
-    
-    if (accountsToProcess.length === 0) {
-        console.log("🎉 All accounts are already business accounts! Nothing to do.");
-        console.app("🎉 All accounts are already business accounts! Nothing to do.");
-        return;
-    }
-    
+    console.log(`📊 Total accounts: ${childAccounts.length}`);
+    console.app(`📊 Total accounts: ${childAccounts.length}`);
     console.log(`🌐 Total proxies: ${proxies.length}`);
     console.app(`🌐 Total proxies: ${proxies.length}`);
     console.log(`⚡ Max concurrent windows: ${maxConcurrentWindows}`);
     console.app(`⚡ Max concurrent windows: ${maxConcurrentWindows}`);
 
     // Process accounts in batches equal to proxy count
-    let processIndex = 0;
-    while (processIndex < accountsToProcess.length) {
+    while (currentAccountIndex < childAccounts.length) {
         const batch = [];
 
         // Create batch of accounts equal to proxy count
-        for (let i = 0; i < maxConcurrentWindows && processIndex < accountsToProcess.length; i++) {
-            batch.push(accountsToProcess[processIndex]);
-            processIndex++;
+        for (let i = 0; i < maxConcurrentWindows && currentAccountIndex < childAccounts.length; i++) {
+            batch.push(childAccounts[currentAccountIndex]);
+            currentAccountIndex++;
         }
 
         console.log(`\n🔄 Processing batch: ${batch.length} accounts`);
@@ -146,21 +80,18 @@ async function updateBusiness() {
         await processBatch(batch);
 
         // Dynamic delay based on proxy count (more proxies = less delay)
-        if (processIndex < accountsToProcess.length) {
+        if (currentAccountIndex < childAccounts.length) {
             const delayMs = Math.max(500, 2000 - (proxies.length * 100)); // Giảm delay khi có nhiều proxy
-            const remaining = accountsToProcess.length - processIndex;
-            console.log(`⏳ Waiting ${delayMs}ms before next batch... (${remaining} accounts remaining)`);
-            console.app(`⏳ Waiting ${delayMs}ms before next batch... (${remaining} accounts remaining)`);
+            console.log(`⏳ Waiting ${delayMs}ms before next batch...`);
+            console.app(`⏳ Waiting ${delayMs}ms before next batch...`);
             await new Promise(resolve => setTimeout(resolve, delayMs));
         }
     }
 
     console.log("✅ All business logins completed!");
     console.app("✅ All business logins completed!");
-    console.log(`📊 Summary: Total accounts in file: ${childAccounts.length}, Skipped (already business): ${childAccounts.length - accountsToProcess.length}, Processed: ${accountsToProcess.length}`);
-    console.app(`📊 Summary: Total accounts in file: ${childAccounts.length}, Skipped (already business): ${childAccounts.length - accountsToProcess.length}, Processed: ${accountsToProcess.length}`);
-    console.log(`🌐 Used ${proxies.length} proxies with ${maxConcurrentWindows} concurrent threads`);
-    console.app(`🌐 Used ${proxies.length} proxies with ${maxConcurrentWindows} concurrent threads`);
+    console.log(`📊 Summary: Processed ${childAccounts.length} accounts using ${proxies.length} proxies with ${maxConcurrentWindows} concurrent threads`);
+    console.app(`📊 Summary: Processed ${childAccounts.length} accounts using ${proxies.length} proxies with ${maxConcurrentWindows} concurrent threads`);
 }
 
 /**
@@ -264,81 +195,17 @@ async function processAccount(accountLine, batchIndex) {
             proxy: proxy
         };
 
-        // Call business login function with retry on page not found
+        // Call business login function
         console.log(`🔐 [${batchIndex + 1}] Attempting business login for: ${email}`);
         console.app(`🔐 [${batchIndex + 1}] Attempting business login for: ${email}`);
 
-        let loginSuccess = false;
-        let loginAttempts = 0;
-        const maxLoginAttempts = 3;
+        await require(path.join(__dirname, "..", "api", "business", "login.js"))(page, loginForm);
 
-        while (!loginSuccess && loginAttempts < maxLoginAttempts) {
-            loginAttempts++;
-            try {
-                console.log(`🔄 [${batchIndex + 1}] Login attempt ${loginAttempts}/${maxLoginAttempts} for: ${email}`);
-                console.app(`🔄 [${batchIndex + 1}] Login attempt ${loginAttempts}/${maxLoginAttempts} for: ${email}`);
-
-                await require(path.join(__dirname, "..", "api", "business", "login.js"))(page, loginForm);
-                
-                // Check for "Page Not Found" after login attempt
-                await new Promise(resolve => setTimeout(resolve, 3000)); // Wait for page to load
-                
-                const pageNotFound = await isPageNotFound(page);
-
-                if (pageNotFound) {
-                    console.log(`❌ [${batchIndex + 1}] Page Not Found detected for ${email}, attempt ${loginAttempts}`);
-                    console.app(`❌ [${batchIndex + 1}] Page Not Found detected for ${email}, attempt ${loginAttempts}`);
-                    
-                    if (loginAttempts < maxLoginAttempts) {
-                        console.log(`🔄 [${batchIndex + 1}] Refreshing page and retrying for: ${email}`);
-                        console.app(`🔄 [${batchIndex + 1}] Refreshing page and retrying for: ${email}`);
-                        
-                        await page.reload({ waitUntil: ['networkidle0', 'domcontentloaded'] });
-                        await new Promise(resolve => setTimeout(resolve, 2000));
-                        continue; // Retry the login
-                    } else {
-                        throw new Error('Page Not Found error persists after multiple attempts');
-                    }
-                }
-
-                loginSuccess = true;
-                console.log(`✅ [${batchIndex + 1}] Successfully logged in: ${email}`);
-                console.app(`✅ [${batchIndex + 1}] Successfully logged in: ${email}`);
-
-            } catch (error) {
-                console.log(`❌ [${batchIndex + 1}] Login attempt ${loginAttempts} failed for ${email}: ${error.message}`);
-                console.app(`❌ [${batchIndex + 1}] Login attempt ${loginAttempts} failed for ${email}: ${error.message}`);
-                
-                if (loginAttempts < maxLoginAttempts) {
-                    console.log(`🔄 [${batchIndex + 1}] Waiting before retry for: ${email}`);
-                    console.app(`🔄 [${batchIndex + 1}] Waiting before retry for: ${email}`);
-                    await new Promise(resolve => setTimeout(resolve, 3000));
-                } else {
-                    throw error; // Re-throw if all attempts failed
-                }
-            }
-        }
-
-        if (!loginSuccess) {
-            throw new Error(`Failed to login after ${maxLoginAttempts} attempts`);
-        }
+        console.log(`✅ [${batchIndex + 1}] Successfully logged in: ${email}`);
+        console.app(`✅ [${batchIndex + 1}] Successfully logged in: ${email}`);
 
         // Check if page have elements id 'cvf-filtered-account-switcher-header-text' is exists
         await new Promise(resolve => setTimeout(resolve, 5000));
-        
-        // Check for Page Not Found again after wait
-        const pageNotFoundAfterWait = await isPageNotFound(page);
-
-        if (pageNotFoundAfterWait) {
-            console.log(`❌ [${batchIndex + 1}] Page Not Found detected after login wait for ${email}`);
-            console.app(`❌ [${batchIndex + 1}] Page Not Found detected after login wait for ${email}`);
-            console.log(`🔄 [${batchIndex + 1}] Refreshing page and continuing for: ${email}`);
-            console.app(`🔄 [${batchIndex + 1}] Refreshing page and continuing for: ${email}`);
-            
-            await page.reload({ waitUntil: ['networkidle0', 'domcontentloaded'] });
-            await new Promise(resolve => setTimeout(resolve, 5000));
-        }
-        
         const accountSwitcherHeader = await page.evaluate(() => {
             return !!document.querySelector('#cvf-filtered-account-switcher-header-text');
         });
@@ -402,10 +269,10 @@ async function processAccount(accountLine, batchIndex) {
                     ]);
                     console.log(`✓ [${batchIndex + 1}] Clicked Complete registration button`);
                 } else {
-                    throw new Error("Complete registration button not found");
+                    throw new Error("ACCOUNT_ALREADY_BUSINESS");
                 }
             } catch (error) {
-                throw new Error(`Error clicking Complete registration button: ${error.message}`);
+                throw new Error(error.message);
             }
             
             await new Promise(resolve => setTimeout(resolve, 2000));
@@ -416,19 +283,21 @@ async function processAccount(accountLine, batchIndex) {
         console.log(`✅ [${batchIndex + 1}] Business account setup completed for: ${email}`);
         console.app(`✅ [${batchIndex + 1}] Business account setup completed for: ${email}`);
 
-        // Add successful business account to data.json
         addBusinessAccount(email);
-
-        // Keep browser open for a while to complete any redirects
-        // await new Promise(resolve => setTimeout(resolve, 1000000));
 
     } catch (error) {
         if (error.message.includes("Navigating frame was detached")) {
             console.log(`✅ [${batchIndex + 1}] Business account setup completed for: ${email}`);
-            console.app(`✅ [${batchIndex + 1}] Business account setup completed for: ${email}`);
-            // Add successful business account to data.json
+            console.app(`✅ [${batchIndex + 1}] Business account setup completed for: ${email}`); 
+            
             addBusinessAccount(email);
-        } else {
+        } else if (error.message.includes("ACCOUNT_ALREADY_BUSINESS")) {
+            console.log(`✅ [${batchIndex + 1}] Account is already a business account: ${email}`);
+            console.app(`✅ [${batchIndex + 1}] Account is already a business account: ${email}`);
+            
+            addBusinessAccount(email);
+        }
+        else{
             console.error(`❌ [${batchIndex + 1}] Error logging in ${email}:`, error.message);
             console.app(`❌ [${batchIndex + 1}] Error logging in ${email}: ${error.message}`);
         }
