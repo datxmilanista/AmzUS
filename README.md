@@ -39,7 +39,7 @@ npm start
 2. The GUI will open with the following sections:
    - Account management
    - Proxy configuration
-   - Card information tracking
+   - Card information 
    - Real-time logs
 
 3. Configure your settings and start processing accounts
@@ -81,6 +81,7 @@ Results are automatically saved in the `output/` directory organized by date:
 ## License
 
 This project is for educational purposes only.
+
 
 
 
