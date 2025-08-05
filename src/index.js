@@ -543,9 +543,54 @@ function createMainWindow(centralWidget) {
 
     businessLoginButton.addEventListener('clicked', async () => {
         appendToTerminal(terminal.toPlainText() + "\n" + "🚀 Starting Business Login Process...");
+        
         try {
+            // ⭐ LOAD AND SHOW STATISTICS BEFORE PROCESSING
+            const accPath = path.join(__dirname, "data", 'acc.txt');
+            if (!fs.existsSync(accPath)) {
+                appendToTerminal(terminal.toPlainText() + "\n" + "❌ acc.txt file not found");
+                return;
+            }
+
+            const allAccounts = fs.readFileSync(accPath, 'utf8')
+                .replaceAll('\r', '')
+                .split('\n')
+                .map(line => line.trim())
+                .filter(line => line.length > 0 && !line.startsWith('//'));
+
+            // Load business accounts from data.json
+            let businessAccounts = [];
+            try {
+                const dataPath = path.join(__dirname, "data", 'data.json');
+                if (fs.existsSync(dataPath)) {
+                    const data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+                    businessAccounts = data.businessAccounts || [];
+                }
+            } catch (error) {
+                console.log(`Error loading business accounts: ${error.message}`);
+            }
+
+            // Count accounts to process
+            const accountsToProcess = allAccounts.filter(accountLine => {
+                const email = accountLine.split('|')[0];
+                return !businessAccounts.includes(email);
+            });
+
+            appendToTerminal(terminal.toPlainText() + "\n" + 
+                `📊 Business Login Status:\n` +
+                `📧 Total accounts: ${allAccounts.length}\n` +
+                `🏢 Already business: ${businessAccounts.length}\n` +
+                `🔄 To process: ${accountsToProcess.length}`);
+
+            if (accountsToProcess.length === 0) {
+                appendToTerminal(terminal.toPlainText() + "\n" + "✅ All accounts are already business accounts");
+                return;
+            }
+
+            // Start processing
             await require(path.join(__dirname, "util", "updateBusiness.js"))();
             appendToTerminal(terminal.toPlainText() + "\n" + "✅ Business login process completed!");
+            
         } catch (error) {
             console.error("Error during business login:", error);
             appendToTerminal(terminal.toPlainText() + "\n" + "❌ Error during business login: " + error.message);

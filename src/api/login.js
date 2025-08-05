@@ -225,18 +225,18 @@ async function login(page, { email, pass, code, proxy }) {
             promises.push(targetPage.waitForNavigation());
         }
         await puppeteer.Locator.race([
+            targetPage.locator('::-p-text(Business account)'),
             targetPage.locator("html > body > #a-page > div.a-section > #authportal-center-section > #authportal-main-section > div:nth-of-type(2) > div > #ap-account-switcher-container > div.a-box > div > div > div:nth-of-type(2) > div > [data-test-id='switchableAccounts'] [data-test-id='accountType']"),
             targetPage.locator('::-p-xpath(//*[@data-test-id=\\"accountType\\"])'),
-            targetPage.locator(":scope >>> html > body > #a-page > div.a-section > #authportal-center-section > #authportal-main-section > div:nth-of-type(2) > div > #ap-account-switcher-container > div.a-box > div > div > div:nth-of-type(2) > div > [data-test-id='switchableAccounts'] [data-test-id='accountType']"),
-            targetPage.locator('::-p-text(Business account)')
+            targetPage.locator(":scope >>> html > body > #a-page > div.a-section > #authportal-center-section > #authportal-main-section > div:nth-of-type(2) > div > #ap-account-switcher-container > div.a-box > div > div > div:nth-of-type(2) > div > [data-test-id='switchableAccounts'] [data-test-id='accountType']")
         ])
-            .setTimeout(5000)
+            .setTimeout(timeout)
             .on('action', () => startWaitingForEvents())
             .click({
-                offset: {
-                    x: 12.037506103515625,
-                    y: 10,
-                },
+              offset: {
+                x: 76.03750610351562,
+                y: 10,
+              },
             });
         await Promise.all(promises);
     } catch (error) {

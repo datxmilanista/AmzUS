@@ -7,9 +7,7 @@ const { QMainWindow, QWidget, QLabel, QLineEdit, QPushButton, QTextEdit,
 
 // Global values
 global.data = {};
-global.data.parentAcc = {
-    geminiKey: ""
-};
+global.data.parentAcc = []; // hoặc {}
 global.data.settings = {
   debug: false,
   showBrowser: true

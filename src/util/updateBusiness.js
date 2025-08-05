@@ -15,6 +15,34 @@ const proxies = fs.readFileSync(path.join(__dirname, "..", "data", 'proxies.txt'
     .map(line => line.trim())
     .filter(line => line.length > 0);
 
+// ⭐ LOAD BUSINESS ACCOUNTS FROM DATA.JSON
+function loadBusinessAccounts() {
+    try {
+        const dataPath = path.join(__dirname, "..", "data", "data.json");
+        if (fs.existsSync(dataPath)) {
+            const data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+            return data.businessAccounts || [];
+        }
+    } catch (error) {
+        console.log(`Error loading business accounts: ${error.message}`);
+    }
+    return [];
+}
+
+// ⭐ CHECK IF ACCOUNT SHOULD BE SKIPPED
+function shouldSkipBusinessUpgrade(email) {
+    const businessAccounts = loadBusinessAccounts();
+    const isAlreadyBusiness = businessAccounts.includes(email);
+    
+    if (isAlreadyBusiness) {
+        console.log(`⏭️ Skipping ${email} - Already a business account`);
+        console.app(`⏭️ Skipping ${email} - Already a business account`);
+        return true;
+    }
+    
+    return false;
+}
+
 // Validate proxy count
 if (proxies.length === 0) {
     console.log("⚠️ Warning: No proxies found in proxies.txt, running without proxy");
@@ -23,7 +51,8 @@ if (proxies.length === 0) {
 
 let currentAccountIndex = 0;
 let currentProxyIndex = 0;
-const maxConcurrentWindows = Math.max(proxies.length, 1); // Tối thiểu 1 thread, tối đa theo số proxy
+
+const maxConcurrentWindows = Math.max(proxies.length, 1);
 let activeBrowsers = [];
 
 /**
@@ -54,34 +83,56 @@ function addBusinessAccount(email) {
  * Main function to start business login process
  */
 async function updateBusiness() {
-    console.log("🚀 Starting Business Login Process...");
-    console.app("🚀 Starting Business Login Process...");
-    console.log(`📊 Total accounts: ${childAccounts.length}`);
-    console.app(`📊 Total accounts: ${childAccounts.length}`);
-    console.log(`🌐 Total proxies: ${proxies.length}`);
-    console.app(`🌐 Total proxies: ${proxies.length}`);
-    console.log(`⚡ Max concurrent windows: ${maxConcurrentWindows}`);
-    console.app(`⚡ Max concurrent windows: ${maxConcurrentWindows}`);
+    console.log("🚀 Starting business login process...");
+    console.app("🚀 Starting business login process...");
 
-    // Process accounts in batches equal to proxy count
-    while (currentAccountIndex < childAccounts.length) {
+    // ⭐ FILTER OUT ALREADY BUSINESS ACCOUNTS
+    const businessAccounts = loadBusinessAccounts();
+    const accountsToProcess = [];
+    let skippedCount = 0;
+
+    for (const accountLine of childAccounts) {
+        const email = accountLine.split('|')[0];
+        
+        if (!shouldSkipBusinessUpgrade(email)) {
+            accountsToProcess.push(accountLine);
+        } else {
+            skippedCount++;
+        }
+    }
+
+    console.log(`📊 Business Login Status:`);
+    console.log(`📧 Total accounts: ${childAccounts.length}`);
+    console.log(`🏢 Already business: ${businessAccounts.length}`);
+    console.log(`⏭️ Skipped: ${skippedCount}`);
+    console.log(`🔄 To process: ${accountsToProcess.length}`);
+    console.app(`Total: ${childAccounts.length}, Already business: ${businessAccounts.length}, Skipped: ${skippedCount}, To process: ${accountsToProcess.length}`);
+
+    if (accountsToProcess.length === 0) {
+        console.log('✅ All accounts are already business accounts');
+        console.app('✅ All accounts are already business accounts');
+        return;
+    }
+
+    // Process remaining accounts
+    while (currentAccountIndex < accountsToProcess.length) {
         const batch = [];
-
-        // Create batch of accounts equal to proxy count
-        for (let i = 0; i < maxConcurrentWindows && currentAccountIndex < childAccounts.length; i++) {
-            batch.push(childAccounts[currentAccountIndex]);
+        
+        for (let i = 0; i < maxConcurrentWindows && currentAccountIndex < accountsToProcess.length; i++) {
+            batch.push({
+                account: accountsToProcess[currentAccountIndex],
+                index: currentAccountIndex
+            });
             currentAccountIndex++;
         }
 
         console.log(`\n🔄 Processing batch: ${batch.length} accounts`);
         console.app(`🔄 Processing batch: ${batch.length} accounts`);
 
-        // Process the batch concurrently
         await processBatch(batch);
 
-        // Dynamic delay based on proxy count (more proxies = less delay)
-        if (currentAccountIndex < childAccounts.length) {
-            const delayMs = Math.max(500, 2000 - (proxies.length * 100)); // Giảm delay khi có nhiều proxy
+        if (currentAccountIndex < accountsToProcess.length) {
+            const delayMs = Math.max(500, 2000 - (proxies.length * 100));
             console.log(`⏳ Waiting ${delayMs}ms before next batch...`);
             console.app(`⏳ Waiting ${delayMs}ms before next batch...`);
             await new Promise(resolve => setTimeout(resolve, delayMs));
@@ -90,24 +141,20 @@ async function updateBusiness() {
 
     console.log("✅ All business logins completed!");
     console.app("✅ All business logins completed!");
-    console.log(`📊 Summary: Processed ${childAccounts.length} accounts using ${proxies.length} proxies with ${maxConcurrentWindows} concurrent threads`);
-    console.app(`📊 Summary: Processed ${childAccounts.length} accounts using ${proxies.length} proxies with ${maxConcurrentWindows} concurrent threads`);
 }
 
 /**
  * Process a batch of accounts concurrently (equal to proxy count)
  */
 async function processBatch(accounts) {
-    const promises = accounts.map((accountLine, index) => {
-        return processAccount(accountLine, index);
-    });
-
-    try {
-        await Promise.allSettled(promises);
-    } catch (error) {
-        console.error("❌ Error in batch processing:", error);
-        console.app("❌ Error in batch processing:", error.message);
-    }
+    const promises = accounts.map(({ account, index }) => 
+        processAccount(account, index).catch(error => {
+            console.error(`❌ Error processing account ${account.split('|')[0]}:`, error.message);
+            console.app(`❌ Error processing account ${account.split('|')[0]}: ${error.message}`);
+        })
+    );
+    
+    await Promise.allSettled(promises);
 }
 
 /**
@@ -269,6 +316,7 @@ async function processAccount(accountLine, batchIndex) {
                     ]);
                     console.log(`✓ [${batchIndex + 1}] Clicked Complete registration button`);
                 } else {
+                    await new Promise(resolve => setTimeout(resolve, 2000000));
                     throw new Error("ACCOUNT_ALREADY_BUSINESS");
                 }
             } catch (error) {
