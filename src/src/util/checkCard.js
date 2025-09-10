@@ -299,14 +299,15 @@ async function initThread(proxy, index) {
 }
 
 /**
- * Enhanced function to clear all existing cards before adding new ones
+ * Clear existing cards in wallet
  */
 async function clearExistingCards(page, email) {
     try {
-        console.log(`🗑️ Starting to clear existing cards for ${email}...`);
-        console.app(`🗑️ Clearing existing cards: ${email}`);
+        // console.log(`Checking for existing cards in wallet for ${email}...`); // ✅ REMOVED
+        // console.app(`Checking for existing cards in wallet for ${email}...`); // ✅ REMOVED
         
-        // Navigate to payment wallet page
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
         const currentUrl = page.url();
         if (!currentUrl.includes('yourpayments') || !currentUrl.includes('wallet')) {
             await page.goto('https://www.amazon.com/cpe/yourpayments/wallet', { 
@@ -316,164 +317,7 @@ async function clearExistingCards(page, email) {
             await new Promise(resolve => setTimeout(resolve, 5000));
         }
 
-        // Wait for page to fully load
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        
-        let totalRemovalAttempts = 0;
-        const maxTotalAttempts = 15; // Prevent infinite loop
-        let consecutiveFailures = 0;
-        const maxConsecutiveFailures = 3;
-
-        while (totalRemovalAttempts < maxTotalAttempts && consecutiveFailures < maxConsecutiveFailures) {
-            totalRemovalAttempts++;
-            
-            // Check for existing payment methods
-            const existingCardCount = await page.evaluate(() => {
-                const walletContainer = document.querySelector('.a-scroller.apx-wallet-desktop-payment-method-selectable-tab-css.a-scroller-vertical');
-                
-                if (!walletContainer || !walletContainer.childNodes[0]) {
-                    return 0;
-                }
-                
-                const paymentMethods = walletContainer.childNodes[0].childNodes;
-                let realCardCount = 0;
-                
-                for (let i = 0; i < paymentMethods.length; i++) {
-                    const method = paymentMethods[i];
-                    
-                    if (method.nodeName && method.nodeName.toLowerCase() === 'div') {
-                        // Check if it's not the "Add payment method" box
-                        const isAddBox = method.querySelector('.apx-add-payment-method-box, .pmts-add-pm-tile, [data-testid="pmts-add-payment-method-tile"]');
-                        
-                        if (!isAddBox) {
-                            realCardCount++;
-                        }
-                    }
-                }
-                
-                return realCardCount;
-            });
-
-            console.log(`🔍 Found ${existingCardCount} existing cards (attempt ${totalRemovalAttempts})`);
-
-            if (existingCardCount === 0) {
-                console.log(`✅ No more cards to remove for ${email}`);
-                console.app(`✅ All cards cleared: ${email}`);
-                consecutiveFailures = 0;
-                break;
-            }
-
-            // Try to click on the first available card
-            const cardClicked = await page.evaluate(() => {
-                const walletContainer = document.querySelector('.a-scroller.apx-wallet-desktop-payment-method-selectable-tab-css.a-scroller-vertical');
-                
-                if (!walletContainer || !walletContainer.childNodes[0]) {
-                    return false;
-                }
-                
-                const paymentMethods = walletContainer.childNodes[0].childNodes;
-                
-                for (let i = 0; i < paymentMethods.length; i++) {
-                    const method = paymentMethods[i];
-                    
-                    if (method.nodeName && method.nodeName.toLowerCase() === 'div') {
-                        // Skip "Add payment method" box
-                        const isAddBox = method.querySelector('.apx-add-payment-method-box, .pmts-add-pm-tile, [data-testid="pmts-add-payment-method-tile"]');
-                        
-                        if (!isAddBox) {
-                            try {
-                                method.click();
-                                return true;
-                            } catch (clickError) {
-                                continue;
-                            }
-                        }
-                    }
-                }
-                
-                return false;
-            });
-
-            if (!cardClicked) {
-                console.log(`❌ Could not click on any card (attempt ${totalRemovalAttempts})`);
-                consecutiveFailures++;
-                
-                // Try page refresh
-                if (consecutiveFailures < maxConsecutiveFailures) {
-                    console.log(`🔄 Refreshing page and retrying...`);
-                    await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
-                    await new Promise(resolve => setTimeout(resolve, 5000));
-                }
-                continue;
-            }
-
-            // Wait for card details to load
-            await new Promise(resolve => setTimeout(resolve, 3000));
-
-            // Get card info before removing
-            const cardInfo = await page.evaluate(() => {
-                const cardSelectors = [
-                    '.a-size-base-plus.pmts-instrument-number-tail span',
-                    '.pmts-instrument-number span',
-                    '[class*="instrument-number"] span'
-                ];
-                
-                let cardNumber = 'Unknown';
-                for (const selector of cardSelectors) {
-                    const element = document.querySelector(selector);
-                    if (element && element.innerText) {
-                        cardNumber = element.innerText;
-                        break;
-                    }
-                }
-                
-                return { number: cardNumber };
-            });
-
-            // Attempt to remove the card with enhanced retry logic
-            let cardRemoved = { success: false };
-            let removalAttempts = 0;
-            const maxRemovalAttempts = 5;
-            
-            while (removalAttempts < maxRemovalAttempts && !cardRemoved.success) {
-                removalAttempts++;
-                console.log(`   🗑️ Removing card ${cardInfo.number} (attempt ${removalAttempts}/${maxRemovalAttempts})`);
-                
-                cardRemoved = await removeCardEnhanced(page);
-                
-                if (cardRemoved.success) {
-                    console.log(`   ✅ Successfully removed card: ${cardInfo.number}`);
-                    consecutiveFailures = 0;
-                    break;
-                } else if (cardRemoved.reload) {
-                    console.log(`   🔄 Need to reload page for card removal`);
-                    await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
-                    await new Promise(resolve => setTimeout(resolve, 5000));
-                } else {
-                    console.log(`   ❌ Failed to remove card: ${cardInfo.number} (attempt ${removalAttempts})`);
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-                }
-            }
-            
-            if (!cardRemoved.success) {
-                console.log(`❌ Failed to remove card after ${maxRemovalAttempts} attempts: ${cardInfo.number}`);
-                consecutiveFailures++;
-                
-                // If we can't remove this card, try to continue with others
-                if (consecutiveFailures < maxConsecutiveFailures) {
-                    continue;
-                } else {
-                    console.log(`❌ Too many consecutive failures, stopping card removal`);
-                    break;
-                }
-            }
-
-            // Wait before processing next card
-            await new Promise(resolve => setTimeout(resolve, randomInt(2000, 4000)));
-        }
-
-        // Final verification
-        const finalCardCount = await page.evaluate(() => {
+        let existingCardCount = await page.evaluate(() => {
             const walletContainer = document.querySelector('.a-scroller.apx-wallet-desktop-payment-method-selectable-tab-css.a-scroller-vertical');
             
             if (!walletContainer || !walletContainer.childNodes[0]) {
@@ -498,190 +342,113 @@ async function clearExistingCards(page, email) {
             return realCardCount;
         });
 
-        if (finalCardCount === 0) {
-            console.log(`✅ All cards successfully cleared for ${email}`);
-            console.app(`✅ Wallet cleared: ${email}`);
-        } else {
-            console.log(`⚠️ ${finalCardCount} cards remaining for ${email} after cleanup attempts`);
-            console.app(`⚠️ ${finalCardCount} cards remaining: ${email}`);
+        if (existingCardCount === 0) {
+            // console.log(`No existing cards found for ${email}, proceeding to add new cards`); // ✅ REMOVED
+            // console.app(`No existing cards found for ${email}, proceeding to add new cards`); // ✅ REMOVED
+            return;
         }
 
-        // Wait a bit before proceeding to add new cards
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        console.log(`🗑️ Removing ${existingCardCount} existing cards: ${email}`);
+        console.app(`🗑️ Removing ${existingCardCount} existing cards: ${email}`);
+
+        let removedCount = 0;
+        let maxRetries = 10;
         
-        return { success: finalCardCount === 0, remainingCards: finalCardCount };
+        while (removedCount < existingCardCount && maxRetries > 0) {
+            maxRetries--;
+            
+            const cardClicked = await page.evaluate(() => {
+                const walletContainer = document.querySelector('.a-scroller.apx-wallet-desktop-payment-method-selectable-tab-css.a-scroller-vertical');
+                
+                if (!walletContainer || !walletContainer.childNodes[0]) {
+                    return false;
+                }
+                
+                const paymentMethods = walletContainer.childNodes[0].childNodes;
+                
+                for (let i = 0; i < paymentMethods.length; i++) {
+                    const method = paymentMethods[i];
+                    
+                    if (method.nodeName && method.nodeName.toLowerCase() === 'div') {
+                        const isAddBox = method.querySelector('.apx-add-payment-method-box, .pmts-add-pm-tile, [data-testid="pmts-add-payment-method-tile"]');
+                        
+                        if (!isAddBox) {
+                            method.click();
+                            return true;
+                        }
+                    }
+                }
+                
+                return false;
+            });
+
+            if (!cardClicked) {
+                // console.log(`No more cards to click for ${email}, breaking loop`); // ✅ REMOVED
+                break;
+            }
+
+            await new Promise(resolve => setTimeout(resolve, 3000));
+
+            const cardInfo = await page.evaluate(() => {
+                const cardSelectors = [
+                    '.a-size-base-plus.pmts-instrument-number-tail span',
+                    '.pmts-instrument-number span',
+                    '[class*="instrument-number"] span'
+                ];
+                
+                let cardNumber = 'Unknown';
+                for (const selector of cardSelectors) {
+                    const element = document.querySelector(selector);
+                    if (element && element.innerText) {
+                        cardNumber = element.innerText;
+                        break;
+                    }
+                }
+                
+                return { number: cardNumber };
+            });
+
+            let retryCount = 0;
+            let cardRemoved = { success: false };
+            
+            while (retryCount < 3 && !cardRemoved.success) {
+                cardRemoved = await removeCard(page);
+                
+                if (cardRemoved.success) {
+                    removedCount++;
+                    // console.log(`Removed existing card: ${cardInfo.number} for ${email} (${removedCount}/${existingCardCount})`); // ✅ REMOVED - TOO VERBOSE
+                    // console.app(`Removed existing card: ${cardInfo.number} for ${email} (${removedCount}/${existingCardCount})`); // ✅ REMOVED
+                    await new Promise(resolve => setTimeout(resolve, randomInt(2000, 3000)));
+                    break;
+                } else if (cardRemoved.reload) {
+                    // console.log(`Reloading page to retry card removal for ${email}`); // ✅ REMOVED
+                    await page.reload({ waitUntil: ["domcontentloaded"] });
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    retryCount++;
+                } else {
+                    // console.log(`Failed to remove card: ${cardInfo.number} for ${email}, attempt ${retryCount + 1}`); // ✅ REMOVED
+                    retryCount++;
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+            }
+            
+            if (!cardRemoved.success) {
+                // console.log(`Failed to remove card after 3 attempts: ${cardInfo.number} for ${email}`); // ✅ REMOVED
+                continue;
+            }
+        }
+
+        console.log(`✅ Cleared ${removedCount}/${existingCardCount} cards: ${email}`);
+        console.app(`✅ Cleared ${removedCount}/${existingCardCount} cards: ${email}`);
+
+        await new Promise(resolve => setTimeout(resolve, 2000));
 
     } catch (error) {
-        console.log(`❌ Clear cards error for ${email}: ${error.message}`);
+        console.log(`❌ Clear cards error: ${email} - ${error.message}`);
         console.app(`❌ Clear cards error: ${email}`);
-        return { success: false, error: error.message };
     }
 }
 
-/**
- * Enhanced card removal function with better error handling
- */
-async function removeCardEnhanced(page) {
-    try {
-        if (!page || page.isClosed()) {
-            return { success: false, error: 'Page closed' };
-        }
-
-        // Wait a moment before starting removal process
-        await new Promise(resolve => setTimeout(resolve, randomInt(1000, 2000)));
-        
-        // Step 1: Look for and click the remove/delete link
-        const removeLinkSelectors = [
-            '.a-row.apx-wallet-payment-method-details-section.pmts-portal-component .a-link-normal',
-            '.pmts-portal-component .a-link-normal',
-            'a[href*="remove"]',
-            'a[href*="delete"]',
-            '.apx-remove-link'
-        ];
-
-        let removeLinkFound = false;
-        for (const selector of removeLinkSelectors) {
-            try {
-                await page.waitForSelector(selector, { timeout: 5000 });
-                await page.click(selector);
-                removeLinkFound = true;
-                console.log(`   ✅ Clicked remove link with selector: ${selector}`);
-                break;
-            } catch (selectorError) {
-                continue;
-            }
-        }
-
-        // Try JavaScript click if normal selectors fail
-        if (!removeLinkFound) {
-            removeLinkFound = await page.evaluate(() => {
-                // Look for any link that might be a remove/delete link
-                const links = document.querySelectorAll('a');
-                for (const link of links) {
-                    const href = link.getAttribute('href') || '';
-                    const text = link.textContent.toLowerCase();
-                    
-                    if (href.includes('remove') || href.includes('delete') || 
-                        text.includes('remove') || text.includes('delete')) {
-                        link.click();
-                        return true;
-                    }
-                }
-                return false;
-            });
-        }
-
-        if (!removeLinkFound) {
-            console.log(`   ❌ Could not find remove link`);
-            return { success: false, reload: true };
-        }
-
-        // Wait for removal dialog to appear
-        await new Promise(resolve => setTimeout(resolve, randomInt(2000, 3000)));
-
-        // Step 2: Look for and click the confirmation button
-        const confirmButtonSelectors = [
-            '.a-popover.a-popover-modal.a-declarative[aria-hidden="false"] .a-popover-wrapper .apx-remove-link-button',
-            '.apx-remove-link-button',
-            'input[value*="Remove"]',
-            'button[value*="Remove"]'
-        ];
-
-        let confirmButtonFound = false;
-        for (const selector of confirmButtonSelectors) {
-            try {
-                await page.waitForSelector(selector, { timeout: 8000 });
-                await page.click(selector);
-                confirmButtonFound = true;
-                console.log(`   ✅ Clicked confirm button with selector: ${selector}`);
-                break;
-            } catch (selectorError) {
-                continue;
-            }
-        }
-
-        if (!confirmButtonFound) {
-            console.log(`   ❌ Could not find confirmation button`);
-            return { success: false };
-        }
-
-        // Wait for potential second confirmation
-        await new Promise(resolve => setTimeout(resolve, randomInt(1500, 2500)));
-
-        // Step 3: Handle "Remove without selecting" option if present
-        try {
-            const removeWithoutSelectingExists = await page.waitForSelector(
-                '.a-popover.a-popover-modal.a-declarative[aria-hidden="false"] .apx-remove-link-button[value="Remove without selecting"]', 
-                { timeout: 5000 }
-            ).then(() => true).catch(() => false);
-
-            if (removeWithoutSelectingExists) {
-                await page.click('.a-popover.a-popover-modal.a-declarative[aria-hidden="false"] .apx-remove-link-button[value="Remove without selecting"]');
-                console.log(`   ✅ Clicked "Remove without selecting"`);
-                await new Promise(resolve => setTimeout(resolve, randomInt(2000, 3000)));
-                return { success: true };
-            }
-        } catch (removeWithoutError) {
-            // Continue to next step
-        }
-
-        // Step 4: Handle final confirmation button
-        const finalConfirmSelectors = [
-            '.a-popover.a-popover-modal.a-declarative[aria-hidden="false"] .a-popover-wrapper span.a-button.a-button-primary.pmts-delete-instrument.apx-remove-button-desktop.pmts-button-input input.a-button-input',
-            '.pmts-delete-instrument input.a-button-input',
-            '.apx-remove-button-desktop input',
-            'input[type="submit"][value*="Remove"]'
-        ];
-
-        let finalConfirmFound = false;
-        for (const selector of finalConfirmSelectors) {
-            try {
-                await page.waitForSelector(selector, { timeout: 8000 });
-                await page.click(selector);
-                finalConfirmFound = true;
-                console.log(`   ✅ Clicked final confirm button with selector: ${selector}`);
-                break;
-            } catch (selectorError) {
-                continue;
-            }
-        }
-
-        // Try JavaScript approach for final confirmation
-        if (!finalConfirmFound) {
-            finalConfirmFound = await page.evaluate(() => {
-                const buttons = document.querySelectorAll('input[type="submit"], button');
-                for (const button of buttons) {
-                    const value = button.getAttribute('value') || '';
-                    const text = button.textContent.toLowerCase();
-                    
-                    if (value.includes('Remove') || text.includes('remove') || 
-                        value.includes('Delete') || text.includes('delete')) {
-                        button.click();
-                        return true;
-                    }
-                }
-                return false;
-            });
-        }
-
-        if (!finalConfirmFound) {
-            console.log(`   ❌ Could not find final confirmation button`);
-            return { success: false };
-        }
-
-        // Wait for removal to complete
-        await new Promise(resolve => setTimeout(resolve, randomInt(3000, 5000)));
-        
-        console.log(`   ✅ Card removal process completed`);
-        return { success: true };
-
-    } catch (error) {
-        console.log(`   ❌ Remove card error: ${error.message}`);
-        return { success: false, error: error.message };
-    }
-}
-
-// Update the thread function to ensure cards are cleared before adding new ones
 async function thread(page, browser, email, index, proxy) {
     global.temp.checkCard[index] = {};
     
@@ -726,12 +493,6 @@ async function thread(page, browser, email, index, proxy) {
     console.log(`➕ Adding cards: ${email} (${currentCount}/80)`);
     console.app(`➕ Adding cards: ${email} (${currentCount}/80)`);
     
-    // ✅ ENSURE WALLET IS COMPLETELY CLEAR BEFORE ADDING CARDS
-    const clearResult = await clearExistingCards(page, email);
-    if (!clearResult.success) {
-        console.log(`⚠️ Could not fully clear wallet for ${email}, continuing anyway...`);
-    }
-    
     for (let i = 0; i < 5; i++) {
         indexCard++;
         let card = listCards[indexCard];
@@ -749,16 +510,21 @@ async function thread(page, browser, email, index, proxy) {
             name: 'Saint David',
             cvc
         };
+        // console.log(`Card: ${card} for ${email} (${data.childCount[email] || 0}/80)`); // ✅ REMOVED - TOO VERBOSE
+        // console.app(`Card: ${card} for ${email} (${data.childCount[email] || 0}/80)`); // ✅ REMOVED
         
         let res = await require(path.join(__dirname, "..", "api", "addCard.js"))(page, form);
         let attempts = 1;
         const maxAttempts = 5;
         while (!res.success && attempts < maxAttempts) {
+            // console.log(`Retry attempt ${attempts}/${maxAttempts} for card: ${card}. Error: ${res.error || 'Unknown'}`); // ✅ REDUCED VERBOSITY
+            // console.app(`Retry attempt ${attempts}/${maxAttempts} for card: ${card}. Error: ${res.error || 'Unknown'}`); // ✅ REMOVED
             attempts++;
             
             await new Promise(resolve => setTimeout(resolve, 5000));
             
             try {
+                // console.log("Refreshing page for retry..."); // ✅ REMOVED
                 await page.reload({ 
                     waitUntil: ['domcontentloaded'],
                     timeout: 30000
@@ -768,8 +534,10 @@ async function thread(page, browser, email, index, proxy) {
                 
                 const currentUrl = page.url();
                 if (!currentUrl.includes('yourpayments') || !currentUrl.includes('wallet')) {
+                    // console.log("Not on payment page after reload, navigating back..."); // ✅ REMOVED
                     let navRes = await require(path.join(__dirname, "..", "api", "goPayment.js"))(page);
                     if (navRes.error) {
+                        // console.log(`Navigation failed: ${navRes.error}`); // ✅ REMOVED
                         break;
                     }
                     await new Promise(resolve => setTimeout(resolve, 5000));
@@ -777,7 +545,7 @@ async function thread(page, browser, email, index, proxy) {
                 
             } catch (error) {
                 if (error.name === 'TimeoutError') {
-                    // Continue anyway
+                    // console.log('Page reload timed out, continuing anyway...'); // ✅ REMOVED
                 } else {
                     throw error;
                 }
