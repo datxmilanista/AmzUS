@@ -739,9 +739,14 @@ async function thread(page, browser, email, index, proxy) {
             console.app("📋 All cards from list added");
             break;
         }
-        let [number, month, year, cvc] = card.split('|');
+        
+        // ✅ STORE ORIGINAL CARD LINE AND PARSED INFO
+        let cardParts = card.split('|');
+        let [number, month, year, cvc] = cardParts;
+        
         year = year.length == 2 ? '20' + year : year;
         month = month.length == 1 ? '0' + month : month;
+        
         let form = {
             number,
             month,
@@ -919,14 +924,15 @@ async function thread(page, browser, email, index, proxy) {
 
         let fourNum = cardInfo.number.split('•••• ')[1];
         if (!fourNum) {
-            // console.log(`Could not extract last 4 digits from ${cardInfo.number}, using full number`); // ✅ REMOVED
             fourNum = cardInfo.number.replace(/\D/g, '').slice(-4);
         }
         
+        // ✅ STORE ORIGINAL CARD PARTS AND FORM
         global.temp.checkCard[index][fourNum] = {
             name: cardInfo.name,
             img: cardInfo.link,
-            card: form
+            card: form,
+            originalCardParts: cardParts  // ✅ STORE ORIGINAL CARD PARTS
         }
 
         data.childCount[email] = (data.childCount[email] || 0) + 1;
@@ -1003,20 +1009,30 @@ async function checkWallet(page, browser, email, index, proxy) {
             let fourNum = cardInfo.number.split('•••• ')[1];
 
             if (!global.temp.checkCard[index][fourNum]) {
-           
+                console.log(`⚠️ Card not found in temp storage: ***${fourNum}`);
                 indexCard++;
                 continue;
             }
 
             let cardBin = await getCardInfo(global.temp.checkCard[index][fourNum].card.number);
             if (!cardBin.success) {
-         
+                console.log(`⚠️ Could not get BIN info for ***${fourNum}`);
+                // Set default values for failed BIN lookup
+                cardBin = {
+                    scheme: 'Unknown',
+                    type: 'Unknown', 
+                    cardTier: 'Unknown',
+                    a2: 'Unknown',
+                    country: 'Unknown',
+                    issuer: 'Unknown'
+                };
             }
 
             const storedImg = global.temp.checkCard[index][fourNum].img || '';
             const currentImg = cardInfo.link || '';
             const currentName = cardInfo.name || '';
 
+            console.log(`🔍 Verifying card ***${fourNum}: ${email}`);
             
             const cardRemoved = await removeCard(page);
             while (cardRemoved.reload) {
@@ -1025,24 +1041,45 @@ async function checkWallet(page, browser, email, index, proxy) {
                 cardRemoved = await removeCard(page);
             }
             if (!cardRemoved.success) {
-        
+                console.log(`❌ Failed to remove card during verification: ${cardInfo.number}`);
                 indexCard++;
                 continue;
             }
 
             saveRemainingCards();
 
+            // ✅ BUILD OUTPUT WITH ORIGINAL CARD INFO + BANK INFO
+            const originalParts = global.temp.checkCard[index][fourNum].originalCardParts;
+            const bankInfo = `${cardBin.scheme || 'Unknown'}|${cardBin.type || 'Unknown'}|${cardBin.cardTier || 'Unknown'}|${cardBin.a2 || 'Unknown'}|${cardBin.country || 'Unknown'}|${cardBin.issuer || 'Unknown'}`;
+            
+            // Reconstruct card info: NUMBER|MM|YYYY|CVC|...REMAINING_FIELDS|BANK_INFO
+            let outputParts = [];
+            
+            // Add basic card info (update with actual processed values)
+            outputParts.push(originalParts[0]); // number
+            outputParts.push(originalParts[1]); // month  
+            outputParts.push(originalParts[2]); // year
+            outputParts.push(originalParts[3]); // cvc
+            
+            // Add remaining original fields if they exist (name, address, etc.)
+            for (let i = 4; i < originalParts.length; i++) {
+                outputParts.push(originalParts[i]);
+            }
+            
+            // Add bank info at the end
+            outputParts.push(`Bank: ${bankInfo}`);
+            
+            const fullCardOutput = outputParts.join('|');
+            
             if (storedImg != currentImg || currentName != global.temp.checkCard[index][fourNum].name) {
-                console.card.live(`LIVE|${global.temp.checkCard[index][fourNum].card.number}|${global.temp.checkCard[index][fourNum].card.month}|${global.temp.checkCard[index][fourNum].card.year}|${global.temp.checkCard[index][fourNum].card.cvc}|- Info Bank: ${cardBin.scheme}|${cardBin.type}|${cardBin.cardTier}|${cardBin.a2}|${cardBin.country}|${cardBin.issuer}`);
+                console.card.live(`LIVE|${fullCardOutput}`);
                 console.log(`✅ LIVE - Card ***${fourNum}`);
                 console.app(`✅ LIVE - Card ***${fourNum}`);
             } else {
-                console.card.die(`DIE|${global.temp.checkCard[index][fourNum].card.number}|${global.temp.checkCard[index][fourNum].card.month}|${global.temp.checkCard[index][fourNum].card.year}|${global.temp.checkCard[index][fourNum].card.cvc}|- Info Bank: ${cardBin.scheme}|${cardBin.type}|${cardBin.cardTier}|${cardBin.a2}|${cardBin.country}|${cardBin.issuer}`);
+                console.card.die(`DIE|${fullCardOutput}`);
                 console.log(`❌ DIE - Card ***${fourNum}`);
                 console.app(`❌ DIE - Card ***${fourNum}`);
             }
-            
-     
         }
         
         return thread(page, browser, email, index, proxy);
