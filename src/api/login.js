@@ -491,9 +491,24 @@ async function login(page, { email, pass, code, proxy }) {
         while (mfaRetries > 0) {
             try {
                 let twofactor = require("node-2fa");
-                let mfaToken = twofactor.generateToken(code).token;
-                console.log("Generated MFA token:", mfaToken);
-                console.app("Generated MFA token:" + mfaToken);
+                let mfaToken;
+                
+                try {
+                    const tokenResult = twofactor.generateToken(code);
+                    if (tokenResult && tokenResult.token) {
+                        mfaToken = tokenResult.token;
+                        console.log("Generated MFA token:", mfaToken);
+                        console.app("Generated MFA token:" + mfaToken);
+                    } else {
+                        console.log("Failed to generate MFA token, using provided code:", code);
+                        console.app("Failed to generate MFA token, using provided code:" + code);
+                        mfaToken = code; // Fallback to using the code directly
+                    }
+                } catch (tokenError) {
+                    console.log("Error generating MFA token, using provided code:", code);
+                    console.app("Error generating MFA token, using provided code:" + code);
+                    mfaToken = code; // Fallback to using the code directly
+                }
 
                 {
                     const targetPage = page;

@@ -8,7 +8,62 @@ const https = require('https');
 
 const data = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "data", 'data.json'), 'utf8'));
 
-let listCards = fs.readFileSync(path.join(__dirname, "..", "data", 'card.txt'), 'utf8').replaceAll("\r", '').split("\n").map(line => line.trim()).filter(line => line.length > 0);
+// ✅ THÊM HÀM KIỂM TRA THẺ HẾT HẠN
+function isCardExpired(month, year) {
+    const currentDate = new Date();
+    const currentMonth = currentDate.getMonth() + 1; // getMonth() returns 0-11
+    const currentYear = currentDate.getFullYear();
+    
+    // Chuyển đổi năm 2 số thành 4 số nếu cần
+    const cardYear = year.length === 2 ? parseInt('20' + year) : parseInt(year);
+    const cardMonth = parseInt(month);
+    
+    // So sánh năm trước
+    if (cardYear < currentYear) {
+        return true;
+    }
+    
+    // Nếu cùng năm, so sánh tháng
+    if (cardYear === currentYear && cardMonth < currentMonth) {
+        return true;
+    }
+    
+    return false;
+}
+
+// ✅ SỬA ĐỔI PHẦN LOAD VÀ LỌC CARDS
+let allCards = fs.readFileSync(path.join(__dirname, "..", "data", 'card.txt'), 'utf8')
+    .replaceAll("\r", '')
+    .split("\n")
+    .map(line => line.trim())
+    .filter(line => line.length > 0);
+
+// ✅ LỌC BỎ THẺ HẾT HẠN
+let listCards = [];
+let expiredCount = 0;
+
+allCards.forEach(card => {
+    const parts = card.split('|');
+    if (parts.length >= 3) {
+        const [number, month, year] = parts;
+        
+        if (isCardExpired(month, year)) {
+            expiredCount++;
+            console.log(`❌ Expired card filtered: ***${number.slice(-4)} - ${month}/${year}`);
+        } else {
+            listCards.push(card);
+        }
+    } else {
+        // Nếu format không đúng, vẫn giữ lại
+        listCards.push(card);
+    }
+});
+
+console.log(`📊 Card filtering results:`);
+console.log(`   ✅ Valid cards: ${listCards.length}`);
+console.log(`   ❌ Expired cards filtered: ${expiredCount}`);
+console.app(`📊 Filtered: ${listCards.length} valid, ${expiredCount} expired cards`);
+
 let indexCard = -1;
 
 // Load all accounts and filter only business accounts
@@ -28,9 +83,9 @@ let indexChild = -1;
 let listProxy = fs.readFileSync(path.join(__dirname, "..", "data", 'proxies.txt'), 'utf8').replaceAll("\r", '').split("\n").map(line => line.trim()).filter(line => line.length > 0);
 
 // Set total card count at startup
-const totalCards = listCards.length;
+const totalCards = listCards.length; // ✅ SỬ DỤNG SỐ LƯỢNG THẺ SAU KHI LỌC
 
-// ✅ INITIALIZE global.data IF NOT EXISTS - MOVED BEFORE USAGE
+
 if (!global.data) {
     global.data = {};
 }
@@ -38,7 +93,7 @@ if (!global.data.settings) {
     global.data.settings = {};
 }
 
-// ✅ NOW SAFE TO SET PROPERTIES
+
 global.data.cardTotal = totalCards;
 
 // Update UI counters if console.card is available
@@ -740,13 +795,12 @@ async function thread(page, browser, email, index, proxy) {
             break;
         }
         
-        // ✅ STORE ORIGINAL CARD LINE AND PARSED INFO
-        let cardParts = card.split('|');
-        let [number, month, year, cvc] = cardParts;
+        // ✅ LƯU TOÀN BỘ DỮ LIỆU GỐC
+        let originalCardData = card;
         
+        let [number, month, year, cvc] = card.split('|');
         year = year.length == 2 ? '20' + year : year;
         month = month.length == 1 ? '0' + month : month;
-        
         let form = {
             number,
             month,
@@ -924,15 +978,15 @@ async function thread(page, browser, email, index, proxy) {
 
         let fourNum = cardInfo.number.split('•••• ')[1];
         if (!fourNum) {
+            // console.log(`Could not extract last 4 digits from ${cardInfo.number}, using full number`); // ✅ REMOVED
             fourNum = cardInfo.number.replace(/\D/g, '').slice(-4);
         }
         
-        // ✅ STORE ORIGINAL CARD PARTS AND FORM
         global.temp.checkCard[index][fourNum] = {
             name: cardInfo.name,
             img: cardInfo.link,
             card: form,
-            originalCardParts: cardParts  // ✅ STORE ORIGINAL CARD PARTS
+            originalData: originalCardData // ✅ LƯU DỮ LIỆU GỐC
         }
 
         data.childCount[email] = (data.childCount[email] || 0) + 1;
@@ -1009,18 +1063,17 @@ async function checkWallet(page, browser, email, index, proxy) {
             let fourNum = cardInfo.number.split('•••• ')[1];
 
             if (!global.temp.checkCard[index][fourNum]) {
-                console.log(`⚠️ Card not found in temp storage: ***${fourNum}`);
                 indexCard++;
                 continue;
             }
 
             let cardBin = await getCardInfo(global.temp.checkCard[index][fourNum].card.number);
             if (!cardBin.success) {
-                console.log(`⚠️ Could not get BIN info for ***${fourNum}`);
-                // Set default values for failed BIN lookup
+                // Sử dụng giá trị mặc định
                 cardBin = {
+                    success: true,
                     scheme: 'Unknown',
-                    type: 'Unknown', 
+                    type: 'Unknown',
                     cardTier: 'Unknown',
                     a2: 'Unknown',
                     country: 'Unknown',
@@ -1032,8 +1085,6 @@ async function checkWallet(page, browser, email, index, proxy) {
             const currentImg = cardInfo.link || '';
             const currentName = cardInfo.name || '';
 
-            console.log(`🔍 Verifying card ***${fourNum}: ${email}`);
-            
             const cardRemoved = await removeCard(page);
             while (cardRemoved.reload) {
                 await page.reload({ waitUntil: ["networkidle0", "domcontentloaded"] });
@@ -1041,42 +1092,22 @@ async function checkWallet(page, browser, email, index, proxy) {
                 cardRemoved = await removeCard(page);
             }
             if (!cardRemoved.success) {
-                console.log(`❌ Failed to remove card during verification: ${cardInfo.number}`);
                 indexCard++;
                 continue;
             }
 
             saveRemainingCards();
 
-            // ✅ BUILD OUTPUT WITH ORIGINAL CARD INFO + BANK INFO
-            const originalParts = global.temp.checkCard[index][fourNum].originalCardParts;
-            const bankInfo = `${cardBin.scheme || 'Unknown'}|${cardBin.type || 'Unknown'}|${cardBin.cardTier || 'Unknown'}|${cardBin.a2 || 'Unknown'}|${cardBin.country || 'Unknown'}|${cardBin.issuer || 'Unknown'}`;
-            
-            // Reconstruct card info: NUMBER|MM|YYYY|CVC|...REMAINING_FIELDS|BANK_INFO
-            let outputParts = [];
-            
-            // Add basic card info (update with actual processed values)
-            outputParts.push(originalParts[0]); // number
-            outputParts.push(originalParts[1]); // month  
-            outputParts.push(originalParts[2]); // year
-            outputParts.push(originalParts[3]); // cvc
-            
-            // Add remaining original fields if they exist (name, address, etc.)
-            for (let i = 4; i < originalParts.length; i++) {
-                outputParts.push(originalParts[i]);
-            }
-            
-            // Add bank info at the end
-            outputParts.push(`Bank: ${bankInfo}`);
-            
-            const fullCardOutput = outputParts.join('|');
+            // ✅ THAY ĐỔI OUTPUT - LẤY TOÀN BỘ DỮ LIỆU GỐC
+            const originalData = global.temp.checkCard[index][fourNum].originalData;
+            const bankInfo = `|- Info Bank: ${cardBin.scheme}|${cardBin.type}|${cardBin.cardTier}|${cardBin.a2}|${cardBin.country}|${cardBin.issuer}`;
             
             if (storedImg != currentImg || currentName != global.temp.checkCard[index][fourNum].name) {
-                console.card.live(`LIVE|${fullCardOutput}`);
+                console.card.live(`LIVE|${originalData}${bankInfo}`);
                 console.log(`✅ LIVE - Card ***${fourNum}`);
                 console.app(`✅ LIVE - Card ***${fourNum}`);
             } else {
-                console.card.die(`DIE|${fullCardOutput}`);
+                console.card.die(`DIE|${originalData}${bankInfo}`);
                 console.log(`❌ DIE - Card ***${fourNum}`);
                 console.app(`❌ DIE - Card ***${fourNum}`);
             }
@@ -1116,7 +1147,7 @@ async function removeCard(page) {
             .catch(() => false);
             
         if (!removeButtonExists) {
-        
+      
             return {success: false};
         }
         
